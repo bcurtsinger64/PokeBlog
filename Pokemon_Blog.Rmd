@@ -1,0 +1,105 @@
+---
+title: "Pokemon Clustering Blog"
+author: "Bryce Curtsinger"
+date: "November 20, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Pokemon Clustering
+
+When I was a child, I looked forward to spending my Saturday mornings watching cartoons, as millions of other kids did. Of all the shows, Pokemon was always my favorite. In 2001, my dreams of becoming a Pokemon master came true (kinda) when my mother bought me the newest game, Pokemon Crystal, for the Game Boy Color. This sparked my love of Pokemon games that followed me into my teenage years and adulthood. I fell out for a while after Fire Red/ Leaf Green, then picked up the series again with Pokemon X and Y. This time, I became aware of the competitive scene of Pokemon battling, and fell in love all over again. 
+
+In this post, I will use data of 721 Pokemon to perform a cluster analysis with the purpose of identifying outliers and comparing clusters with Smogon's compeitive tier list. For those unfamiliar, Smogon is an entity which maintains a comprehensive online resource for competitive pokemon battling and fosters a tournament scene with tier lists for different types of battles. The data used for this analysis comes from two sources. One is a list of data on all pokemon maintained on kaggle (https://www.kaggle.com/rounakbanik/pokemon). The second dataset, also from kaggle (https://www.kaggle.com/notgibs/smogon-6v6-pokemon-tiers/version/1), overlaps heavily with the first dataset, but also contains information about each Pokemon's status on Smogon's tier list. Note that the second dataset does not contain the newest generation, so this analysis will only include generations 1-6. 
+
+Finally, a brief description of packages used is provided below.
+
+pacman - facilitates easy installation and loading of other R packages
+
+tidyverse - provides a multitude of data manipulation functions, among other things, to augment base R data manipulation.
+
+ggplot2 - comprehensive visualization tool
+
+DMwR - A package that follows the book "Data Mining with R, learning with case studies" by Luis Torgo, used in this case for functions to facilitate outlier detection
+
+```{r Import Data}
+if(!require(pacman)) install.packages(pacman)
+p_load(tidyverse)
+p_load(ggplot2)
+p_load(Rlof)
+
+#Read in Data
+basedat <- read_csv('pokemon.csv')
+pokemon <- basedat %>% 
+  filter(generation != 7) %>% 
+  select(-c(1:19), -japanese_name, -experience_growth, -base_happiness, -base_egg_steps, -base_total, -capture_rate, - classfication) %>% #get rid of these variables
+  select(pokedex_number, name, type1, type2, percentage_male, height_m, weight_kg,
+          hp, attack, defense, sp_attack, sp_defense, speed, generation, is_legendary) #reorder variables
+
+#Smogon Data:
+smogon <- read_csv('smogon.csv') #Read in data from smogon
+smogon <- smogon %>% 
+  rename_all(tolower) %>% 
+  filter(mega == F) %>% #Filter out mega evolutions that are not in the base data
+  select(name, total, tier) #Keep the Stat total & smogon tier
+pokemon <- pokemon %>% left_join(smogon, by = 'name') #join dataframes
+
+pokemon <- pokemon %>% #Change column types
+  mutate(type1 = as.factor(type1), type2 = as.factor(type2), tier = as.factor(tier), total = hp + attack + defense + sp_attack + sp_defense + speed) %>% 
+  mutate(type2 = as.character(type2), tier = as.character(tier)) %>%
+  replace_na(replace = list('type2' = 'none', 'tier' = 'BelowNU')) %>%
+  mutate(type2 = as.factor(type2), tier = as.factor(tier))
+#Inspect Data
+head(pokemon)
+summary(pokemon)
+```
+
+## Outlier Identification
+
+Now that we've joined our datasets, let's begin with outlier detection. In this case, we will focus our analysis primarily on the primary statistics of each pokemon: HP, attack, defense, special attack, special defense, and speed. Anyone familiar with competitive pokemon will immediately think of several pokemon that are outliers in terms of these statistics, so let's see if the results are what we would expect. The first outlier detection technique used is LOF (local outlier factor), which identifies density-based outliers using a nearest-neighbors approach. Here, we compared to the 5 nearest neighbors to identify outliers. Let's plot the density of the outliers:
+
+```{r Outlier Density, echo = F}
+# calculate the LOF scores
+outlier.scores <- lof(pokemon[8:13], k=c(5:10))
+
+# check distribution
+plot(density(outlier.scores))
+
+```
+
+This plot indicates the presence of outliers because of the right-skewed distribution. Let's examine the top 20 outliers:
+
+
+```{r Examine Outliers}
+names <- data.frame('k5' = rep(NA,20),
+                    'k6' = rep(NA,20),
+                    'k7' = rep(NA,20),
+                    'k8' = rep(NA,20),
+                    'k9' = rep(NA,20),
+                    'k10' = rep(NA,20))
+for(i in 1:6){
+  threshold <- sort(outlier.scores[,i], decreasing=T)[20]
+  outlierIDs <- which(outlier.scores[,i]>=threshold)
+  names[,i] <- pokemon[outlierIDs,'name']
+}
+names
+
+OutlierOverlap <- matrix(rep(NA, 36), nrow = 6, ncol = 6)
+
+for( i in 1:6) {
+  for( j in 1:6){
+    OutlierOverlap[i,j] <- sum(names[,i] %in% names[,j])/20
+  }
+}
+apply(OutlierOverlap, 1, mean)
+
+threshold <- sort(outlier.scores[,3], decreasing=T)[20]
+  outlierIDs <- which(outlier.scores[,3]>=threshold)
+  pokemon[outlierIDs,]
+```
+
+Many of these outliers make sense to anyone familiar with the games. Chansey & Blissey, Shuckle, Cloyster, and Ninjask are all well known for having one or two incredibly high stats, but being weak in others. We also see Pokemon that are generally abysmal, notably Magikarp and Feebas who both evolve into much more powerful pokemon than one would expect. There are surprisingly few Legendary pokemon in this list; only Deoxys (with the highest speed in the game) and Zygarde (with a massive health pool compared to most other Legendaries) show up. Only one of these Pokemon (Legendaries aside) stands out as exceptionally powerful: Aegislash. One of only two non-Legendary pokemon banned from OU tier, Aegislash boasts massive defense and special defense stats. What truly makes this pokemon shine is a variable hidden from this analysis: its ability. Aegislash's ability allows it to swap its offensive and defensive stats when it uses an offensive/defensive move. When properly used, Aegislash can serve as an offensive powerhouse and a wall simultaneously.
+
