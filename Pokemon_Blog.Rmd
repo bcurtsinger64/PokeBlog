@@ -1,8 +1,8 @@
 ---
-title: "Pokemon Clustering Blog"
+title: "Pokemon Anomaly Detection & Clustering"
 author: "Bryce Curtsinger"
 date: "November 20, 2018"
-output: html_document
+output: rmarkdown::github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -101,5 +101,5 @@ threshold <- sort(outlier.scores[,3], decreasing=T)[20]
   pokemon[outlierIDs,]
 ```
 
-Many of these outliers make sense to anyone familiar with the games. Chansey & Blissey, Shuckle, Cloyster, and Ninjask are all well known for having one or two incredibly high stats, but being weak in others. We also see Pokemon that are generally abysmal, notably Magikarp and Feebas who both evolve into much more powerful pokemon than one would expect. There are surprisingly few Legendary pokemon in this list; only Deoxys (with the highest speed in the game) and Zygarde (with a massive health pool compared to most other Legendaries) show up. Only one of these Pokemon (Legendaries aside) stands out as exceptionally powerful: Aegislash. One of only two non-Legendary pokemon banned from OU tier, Aegislash boasts massive defense and special defense stats. What truly makes this pokemon shine is a variable hidden from this analysis: its ability. Aegislash's ability allows it to swap its offensive and defensive stats when it uses an offensive/defensive move. When properly used, Aegislash can serve as an offensive powerhouse and a wall simultaneously.
+Many of these outliers make sense to anyone familiar with the games. Chansey & Blissey, Shuckle, Cloyster, and Ninjask are all well known for having one or two incredibly high stats, but being weak in others. We also see Pokemon that are generally abysmal, notably Magikarp who evolves into a much more powerful pokemon than one would expect. There are surprisingly few Legendary pokemon in this list; only Deoxys (with the highest speed in the game) and Zygarde (with a massive health pool compared to most other Legendaries) show up. Only one of these Pokemon (Legendaries aside) stands out as exceptionally powerful: Aegislash. One of only two non-Legendary pokemon banned from OU tier, Aegislash boasts massive defense and special defense stats. What truly makes this pokemon shine is a variable hidden from this analysis: its ability. Aegislash's ability allows it to swap its offensive and defensive stats when it uses an offensive/defensive move. When properly used, Aegislash can serve as an offensive powerhouse and a wall simultaneously.
 
