@@ -29,6 +29,10 @@ Rlof - used for anomaly detection with lof function
 
 randomForest - used to create a random forest model to predict outliers
 
+pROC - calculate ROC & AUC
+
+caret - confusion matrix & performance for model
+
 ```{r Import Data}
 if(!require(pacman)) install.packages(pacman)
 p_load(tidyverse)
