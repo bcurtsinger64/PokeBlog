@@ -9,11 +9,13 @@ output: rmarkdown::github_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Pokemon Clustering
+## Pokemon Anomaly Detection
 
 When I was a child, I looked forward to spending my Saturday mornings watching cartoons, as millions of other kids did. Of all the shows, Pokemon was always my favorite. In 2001, my dreams of becoming a Pokemon master came true (kinda) when my mother bought me the newest game, Pokemon Crystal, for the Game Boy Color. This sparked my love of Pokemon games that followed me into my teenage years and adulthood. I fell out for a while after Fire Red/ Leaf Green, then picked up the series again with Pokemon X and Y. This time, I became aware of the competitive scene of Pokemon battling, and fell in love all over again. 
 
-In this post, I will use data of 721 Pokemon to perform a cluster analysis with the purpose of identifying outliers and comparing clusters with Smogon's compeitive tier list. For those unfamiliar, Smogon is an entity which maintains a comprehensive online resource for competitive pokemon battling and fosters a tournament scene with tier lists for different types of battles. The data used for this analysis comes from two sources. One is a list of data on all pokemon maintained on kaggle (https://www.kaggle.com/rounakbanik/pokemon). The second dataset, also from kaggle (https://www.kaggle.com/notgibs/smogon-6v6-pokemon-tiers/version/1), overlaps heavily with the first dataset, but also contains information about each Pokemon's status on Smogon's tier list. Note that the second dataset does not contain the newest generation, so this analysis will only include generations 1-6. 
+In this post, I will use data of 702 Pokemon from generations 1-6 to identify anomalies and outliers in terms of base statistics, then attempt to predict outliers using a binary classification model. For those unfamiliar, in the video games each pokemon has a base value for each of 6 statistics: HP, Attack, Defense, Special Attack, Special Defense, & Speed. While different instances of the same pokemon can have completely different values in these statistics (for a number of reasons), the base values provide a reference point that allows pokemon to be compared across species. 
+
+The data used for this analysis comes from a list of data on all pokemon maintained on kaggle (https://www.kaggle.com/rounakbanik/pokemon).
 
 Finally, a brief description of packages used is provided below.
 
@@ -25,33 +27,30 @@ ggplot2 - comprehensive visualization tool
 
 Rlof - used for anomaly detection with lof function 
 
+randomForest - used to create a random forest model to predict outliers
+
 ```{r Import Data}
 if(!require(pacman)) install.packages(pacman)
 p_load(tidyverse)
 p_load(ggplot2)
 p_load(Rlof)
+p_load(randomForest)
+p_load(pROC)
+p_load(caret)
 
 #Read in Data
 basedat <- read_csv('pokemon.csv')
 pokemon <- basedat %>% 
   filter(generation != 7) %>% 
-  select(-c(1:19), -japanese_name, -experience_growth, -base_happiness, -base_egg_steps, -base_total, -capture_rate, - classfication) %>% #get rid of these variables
-  select(pokedex_number, name, type1, type2, percentage_male, height_m, weight_kg,
+  select(-c(1:19), -japanese_name, -experience_growth, -base_happiness, -base_egg_steps, -base_total, -capture_rate, - classfication, -percentage_male) %>% #get rid of these variables
+  select(pokedex_number, name, type1, type2, height_m, weight_kg,
           hp, attack, defense, sp_attack, sp_defense, speed, generation, is_legendary) #reorder variables
 
-#Smogon Data:
-smogon <- read_csv('smogon.csv') #Read in data from smogon
-smogon <- smogon %>% 
-  rename_all(tolower) %>% 
-  filter(mega == F) %>% #Filter out mega evolutions that are not in the base data
-  select(name, total, tier) #Keep the Stat total & smogon tier
-pokemon <- pokemon %>% left_join(smogon, by = 'name') #join dataframes
-
 pokemon <- pokemon %>% #Change column types
-  mutate(type1 = as.factor(type1), type2 = as.factor(type2), tier = as.factor(tier), total = hp + attack + defense + sp_attack + sp_defense + speed) %>% 
-  mutate(type2 = as.character(type2), tier = as.character(tier)) %>%
-  replace_na(replace = list('type2' = 'none', 'tier' = 'BelowNU')) %>%
-  mutate(type2 = as.factor(type2), tier = as.factor(tier))
+  mutate(type1 = as.factor(type1), type2 = as.factor(type2), total = hp + attack + defense + sp_attack + sp_defense + speed, type2 = as.character(type2)) %>% 
+  replace_na(replace = list('type2' = 'none')) %>%
+  mutate(type2 = as.factor(type2)) %>%
+  filter(!is.na(height_m))
 #Inspect Data
 head(pokemon)
 summary(pokemon)
@@ -59,21 +58,22 @@ summary(pokemon)
 
 ## Outlier Identification
 
-Now that we've joined our datasets, let's begin with outlier detection. In this case, we will focus our analysis primarily on the primary statistics of each pokemon: HP, attack, defense, special attack, special defense, and speed. Anyone familiar with competitive pokemon will immediately think of several pokemon that are outliers in terms of these statistics, so let's see if the results are what we would expect. The first outlier detection technique used is LOF (local outlier factor), which identifies density-based outliers using a nearest-neighbors approach. Here, we compared to the 5 nearest neighbors to identify outliers. Let's plot the density of the outliers:
+Now that we've joined our datasets, let's begin with outlier detection. In this case, we will focus our analysis on the primary statistics of each pokemon: HP, attack, defense, special attack, special defense, and speed. Anyone familiar with competitive pokemon will immediately think of several pokemon that are outliers in terms of these statistics, so let's see if the results are what we would expect. The outlier detection technique used is LOF (local outlier factor), which identifies density-based outliers using a nearest-neighbors approach. Here, we considered 5, 6, 7, 8, 9, and 10 neighbors. Let's plot the density of the outliers using k = 5 for now:
 
 ```{r Outlier Density, echo = F}
 # calculate the LOF scores
-outlier.scores <- lof(pokemon[8:13], k=c(5:10))
+outlier.scores <- lof(pokemon[7:12], k=c(5:10))
 
 # check distribution
-plot(density(outlier.scores))
+plot(density(outlier.scores[,1]))
+
 
 ```
 
-This plot indicates the presence of outliers because of the right-skewed distribution. Let's examine the top 20 outliers:
+This plot indicates the presence of outliers because of the right-skewed distribution. Now we have to narrow down how many neighbors we want to use. We will use sort of a hackjob approach for this: find the top 20 outliers for each number of neighbors, find how much each iteration of k overlaps with the others, and select the one that has the most overlap. Using this approach, we find that 7 neighbors has the most overlap with each other iteration. Now, let's examine the top 20 outliers:
 
 
-```{r Examine Outliers}
+```{r Examine Outliers, echo = F}
 names <- data.frame('k5' = rep(NA,20),
                     'k6' = rep(NA,20),
                     'k7' = rep(NA,20),
@@ -96,10 +96,97 @@ for( i in 1:6) {
 }
 apply(OutlierOverlap, 1, mean)
 
+plot(density(outlier.scores[,3]))
+
 threshold <- sort(outlier.scores[,3], decreasing=T)[20]
   outlierIDs <- which(outlier.scores[,3]>=threshold)
   pokemon %>% slice(outlierIDs) %>% select(pokedex_number, name, hp, attack, defense, sp_attack, sp_defense, speed, is_legendary)
 ```
 
-Many of these outliers make sense to anyone familiar with the games. Chansey & Blissey, Shuckle, Cloyster, and Ninjask are all well known for having one or two incredibly high stats, but being weak in others. We also see Pokemon that are generally abysmal, notably Magikarp who evolves into a much more powerful pokemon than one would expect. There are surprisingly few Legendary pokemon in this list; only Deoxys (with the highest speed in the game) and Zygarde (with a massive health pool compared to most other Legendaries) show up. Only one of these Pokemon (Legendaries aside) stands out as exceptionally powerful: Aegislash. One of only two non-Legendary pokemon banned from OU tier, Aegislash boasts massive defense and special defense stats. What truly makes this pokemon shine is a variable hidden from this analysis: its ability. Aegislash's ability allows it to swap its offensive and defensive stats when it uses an offensive/defensive move. When properly used, Aegislash can serve as an offensive powerhouse and a wall simultaneously.
+Many of these outliers make sense to anyone familiar with the games. Chansey, Blissey, Shuckle, Cloyster, and Ninjask are all well known for having one or two incredibly high stats, but being weak in others. We also see Pokemon that are generally abysmal, notably Magikarp who evolves into a much more powerful pokemon than one would expect. There are surprisingly few Legendary pokemon in this list; only Deoxys (with the highest speed in the game) and Zygarde (with a massive health pool compared to most other Legendaries) show up. Only one of these Pokemon (Legendaries aside) stands out as exceptionally powerful: Aegislash. Aegislash boasts massive defense and special defense stats. What truly makes this pokemon shine is a variable hidden from this analysis: its ability. Aegislash's ability allows it to swap its offensive and defensive stats when it uses an offensive/defensive move. When properly used, Aegislash can serve as an offensive powerhouse and a wall simultaneously.
 
+As a final step in our analysis, we will attempt to predict outliers with a binary classification model. First, we will have to create a flag to indicate outliers and select a cutoff of our outlier score values. Let's consider a cutoff of 1.3, which will give us 102 "outliers". The density plot we considered above also indicates that this could be a good cutoff to use due to the slight bump followed by decay at this point. Since in this case being an outlier is not necessarily good or bad, it seems appropriate to use a fairly low cutoff. We are interested in identifying pokemon with strange base stat distributions rather than identifying some data problem, so we want to be fairly liberal with our designation (and give the model plenty of data points to work with).
+
+```{r flag outliers, echo = F}
+pokemon$score <- outlier.scores[,3]
+pokemon$is_outlier <- as.factor(ifelse(pokemon$score >= 1.3, 1, 0))
+```
+
+## Predicting Outliers
+
+Now, we can attempt to model these outliers. Let's use a random forest model to classify these outliers.
+
+```{r predict outliers}
+#Train/Test split
+set.seed(2112)
+trainrows <- sample(1:nrow(pokemon), .6*nrow(pokemon), replace = F)
+
+train <- pokemon[trainrows,]
+test <- pokemon[-trainrows,]
+
+#Confirm that there are outliers in both sets
+summary(train)
+summary(test)
+
+rf <- randomForest(is_outlier ~ hp + attack + defense + sp_attack + sp_defense + speed, data = train)
+
+rfpred <- predict(rf, test)
+plot(roc(test$is_outlier, as.numeric(rfpred)))
+confusionMatrix(as.factor(rfpred),test$is_outlier)
+
+```
+
+This model, which predicts if a pokemon is an outlier from just its 6 base stats, doesn't do a great job at predicting which ones are actually outliers. Let's try a few more models below and experiment with raising the cutoff to be considered an outlier:
+
+```{r more models}
+#Full model
+rf <- randomForest(is_outlier~. - pokedex_number - name - score, data = train)
+
+rfpred <- predict(rf, test)
+plot(roc(test$is_outlier, as.numeric(rfpred)))
+confusionMatrix(as.factor(rfpred),test$is_outlier)
+
+#Changing Cutoff to 1.5
+pokemon$score <- outlier.scores[,3]
+pokemon$is_outlier <- as.factor(ifelse(pokemon$score >= 1.5, 1, 0))
+
+set.seed(2112)
+trainrows <- sample(1:nrow(pokemon), .6*nrow(pokemon), replace = F)
+
+train <- pokemon[trainrows,]
+test <- pokemon[-trainrows,]
+
+
+rf <- randomForest(is_outlier~. - pokedex_number - name - score, data = train)
+
+rfpred <- predict(rf, test)
+plot(roc(test$is_outlier, as.numeric(rfpred)))
+confusionMatrix(as.factor(rfpred),test$is_outlier)
+
+#Changing Cutoff to 1.8
+pokemon$score <- outlier.scores[,3]
+pokemon$is_outlier <- as.factor(ifelse(pokemon$score >= 1.6, 1, 0))
+
+set.seed(2112)
+trainrows <- sample(1:nrow(pokemon), .6*nrow(pokemon), replace = F)
+
+train <- pokemon[trainrows,]
+test <- pokemon[-trainrows,]
+
+#Confirm that there are outliers in both sets
+summary(train)
+summary(test)
+
+rf <- randomForest(is_outlier~. - pokedex_number - name - score, data = train)
+
+rfpred <- predict(rf, test)
+plot(roc(test$is_outlier, as.numeric(rfpred)))
+confusionMatrix(as.factor(rfpred),test$is_outlier)
+
+```
+
+We see that these models all have high accuracy, but a low true negative rate. Since there are so few outliers, the models just tend to classify everything as not an outlier.
+
+##Conclusion
+
+In the case of pokemon, outliers are easy to identify but hard to predict. Using a nearest-neighbors approach to outlier identification does a pretty good job pointing out pokemon that any competitive players would recognize as statistical outliers. Trying to predict these outliers is a much more difficult task. It could be due to deep interactions between these statistics that our models have difficulty picking up. It's best to stick to catching-em-all than predicting-em-all
