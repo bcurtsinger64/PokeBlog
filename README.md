@@ -14,8 +14,6 @@ The data used for this analysis comes from a list of data on all pokemon maintai
 
 Finally, a brief description of packages used is provided below.
 
-pacman - facilitates easy installation and loading of other R packages
-
 tidyverse - provides a multitude of data manipulation functions, among other things, to augment base R data manipulation.
 
 ggplot2 - comprehensive visualization tool
@@ -28,19 +26,15 @@ pROC - calculate ROC & AUC
 
 caret - confusion matrix & performance for model
 
-``` r
-if(!require(pacman)) install.packages(pacman)
-```
-
     ## Loading required package: pacman
 
 ``` r
-p_load(tidyverse)
-p_load(ggplot2)
-p_load(Rlof)
-p_load(randomForest)
-p_load(pROC)
-p_load(caret)
+library(tidyverse)
+library(ggplot2)
+library(Rlof)
+library(randomForest)
+library(pROC)
+library(caret)
 
 #Read in Data
 basedat <- read_csv('pokemon.csv')
