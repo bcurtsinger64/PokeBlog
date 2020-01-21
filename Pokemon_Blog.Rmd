@@ -19,8 +19,6 @@ The data used for this analysis comes from a list of data on all pokemon maintai
 
 Finally, a brief description of packages used is provided below.
 
-pacman - facilitates easy installation and loading of other R packages
-
 tidyverse - provides a multitude of data manipulation functions, among other things, to augment base R data manipulation.
 
 ggplot2 - comprehensive visualization tool
@@ -34,13 +32,12 @@ pROC - calculate ROC & AUC
 caret - confusion matrix & performance for model
 
 ```{r Import Data}
-if(!require(pacman)) install.packages(pacman)
-p_load(tidyverse)
-p_load(ggplot2)
-p_load(Rlof)
-p_load(randomForest)
-p_load(pROC)
-p_load(caret)
+library(tidyverse)
+library(ggplot2)
+library(Rlof)
+library(randomForest)
+library(pROC)
+library(caret)
 
 #Read in Data
 basedat <- read_csv('pokemon.csv')
@@ -107,7 +104,7 @@ threshold <- sort(outlier.scores[,3], decreasing=T)[20]
   pokemon %>% slice(outlierIDs) %>% select(pokedex_number, name, hp, attack, defense, sp_attack, sp_defense, speed, is_legendary)
 ```
 
-Many of these outliers make sense to anyone familiar with the games. Chansey, Blissey, Shuckle, Cloyster, and Ninjask are all well known for having one or two incredibly high stats, but being weak in others. We also see Pokemon that are generally abysmal, notably Magikarp who evolves into a much more powerful pokemon than one would expect. There are surprisingly few Legendary pokemon in this list; only Deoxys (with the highest speed in the game) and Zygarde (with a massive health pool compared to most other Legendaries) show up. Only one of these Pokemon (Legendaries aside) stands out as exceptionally powerful: Aegislash. Aegislash boasts massive defense and special defense stats. What truly makes this pokemon shine is a variable hidden from this analysis: its ability. Aegislash's ability allows it to swap its offensive and defensive stats when it uses an offensive/defensive move. When properly used, Aegislash can serve as an offensive powerhouse and a wall simultaneously.
+Many of these outliers make sense to anyone familiar with the pokemon games. Chansey, Blissey, Shuckle, Cloyster, and Ninjask are all well known for having one or two incredibly high stats, but being weak in others. We also see Pokemon that are generally abysmal, notably Magikarp who evolves into a much more powerful pokemon than one would expect. There are surprisingly few Legendary pokemon in this list; only Deoxys (with the highest speed in the game) and Zygarde (with a massive health pool compared to most other Legendaries) show up. Only one of these Pokemon (Legendaries aside) stands out as exceptionally powerful: Aegislash. Aegislash boasts massive defense and special defense stats. What truly makes this pokemon shine is a variable hidden from this analysis: its ability. Aegislash's ability allows it to swap its offensive and defensive stats when it uses an offensive/defensive move. When properly used, Aegislash can serve as an offensive powerhouse and a defensive wall simultaneously.
 
 As a final step in our analysis, we will attempt to predict outliers with a binary classification model. First, we will have to create a flag to indicate outliers and select a cutoff of our outlier score values. Let's consider a cutoff of 1.3, which will give us 102 "outliers". The density plot we considered above also indicates that this could be a good cutoff to use due to the slight bump followed by decay at this point. Since in this case being an outlier is not necessarily good or bad, it seems appropriate to use a fairly low cutoff. We are interested in identifying pokemon with strange base stat distributions rather than identifying some data problem, so we want to be fairly liberal with our designation (and give the model plenty of data points to work with).
 
